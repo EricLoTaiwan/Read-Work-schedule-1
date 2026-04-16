@@ -201,14 +201,11 @@ def main():
     tw_now = datetime.now(pytz.timezone('Asia/Taipei'))
     current_day_number = tw_now.day
 
-    # --- 整合者優化：狀態初始化與自動加載 ---
-    # 若為第一次啟動，自動將 selected_date 設為今天，藉此預設載入今日航班
     if 'initialized' not in st.session_state:
         st.session_state.selected_date = current_day_number
         st.session_state.selected_flight = None
         st.session_state.initialized = True
 
-    # --- URL 參數攔截處理 ---
     if "date" in st.query_params:
         st.session_state.selected_date = int(st.query_params["date"])
         st.session_state.selected_flight = None
@@ -218,8 +215,6 @@ def main():
         st.session_state.selected_flight = st.query_params["flight"]
         st.session_state.selected_date = None
         st.query_params.clear()
-
-    # -----------------------------------
 
     with st.sidebar:
         st.header("⚙️ 班表管理設定")
@@ -241,27 +236,85 @@ def main():
     
     st.markdown("---")
     
-    days_of_week = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
-    header_cols = st.columns(7)
-    for i, day in enumerate(days_of_week):
-        color = "#FF3B30" if day in ["SUN", "SAT"] else "#1C1C1E"
-        header_cols[i].markdown(f"**<h4 style='text-align: center; color: {color}; font-weight:800; font-size:18px;'>{day}</h4>**", unsafe_allow_html=True)
+    # ==========================================
+    # 整合者優化：1. 將資訊欄移至最上方
+    # ==========================================
     
-    st.markdown("<hr style='margin: 0px; border-top: 2px solid #E5E5EA;'>", unsafe_allow_html=True)
+    # 預先取得今日航班 (為了最上方的捷徑面板能正常運作)
+    today_flights = []
+    day_data = df[df['Date'] == current_day_number]
+    if not day_data.empty:
+        today_flights = extract_flights_from_content(day_data.iloc[0]['Content'])
 
+    col_sel, col_info = st.columns([1, 2])
+    
+    with col_sel:
+        st.subheader("🔍 航班快速查詢")
+        st.info("💡 **提示：**\n1. 點擊下方日曆的 **藍色航班號碼** 查單班。\n2. 點擊日曆左上角的 **日期數字** 顯示當日全部航班！", icon="👆")
+        
+        if today_flights:
+            st.success(f"今日 ({current_day_number} 號) 快速捷徑：")
+            for flight in today_flights:
+                if st.button(f"查看今日 {flight} 資訊", use_container_width=True):
+                    st.session_state.selected_flight = flight
+                    st.session_state.selected_date = None
+
+    with col_info:
+        if st.session_state.selected_flight:
+            with st.container():
+                display_flight_info_panel(st.session_state.selected_flight)
+                
+        elif st.session_state.selected_date:
+            date_val = st.session_state.selected_date
+            selected_day_data = df[df['Date'] == date_val]
+            
+            if not selected_day_data.empty:
+                raw_content = selected_day_data.iloc[0]['Content']
+                flights_on_date = extract_flights_from_content(raw_content)
+                
+                if flights_on_date:
+                    st.markdown(f"#### 📅 {date_val} 號 執勤航班總覽")
+                    for idx, f in enumerate(flights_on_date):
+                        with st.container():
+                            display_flight_info_panel(f)
+                        if idx < len(flights_on_date) - 1:
+                            st.markdown("<hr style='border: 2px dashed #AF52DE; margin: 30px 0;'>", unsafe_allow_html=True)
+                else:
+                    st.info(f"📅 您選擇的日期 ({date_val} 號) 無排定航班，或為休假/待命。好好休息！☕")
+        else:
+            st.warning("👈 尚未選擇航班或日期。請點擊下方日曆。")
+
+
+    # ==========================================
+    # 整合者優化：2. 使用純 HTML CSS Grid 重建日曆 (解決手機垂直堆疊問題)
+    # ==========================================
+    st.markdown("---")
+    st.subheader("🗓️ 班表總覽")
+    
+    days_of_week = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
     first_day_str = str(df.iloc[0]['Day']).upper()
     start_day_index = days_of_week.index(first_day_str) if first_day_str in days_of_week else 0
 
+    # 建立一個可橫向滾動的外框，內部為 7 欄 CSS Grid
+    grid_html = """
+    <div style='width: 100%; overflow-x: auto; padding-bottom: 15px;'>
+        <div style='display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); gap: 12px; min-width: 900px;'>
+    """
+
+    # 繪製星期標題
+    for day in days_of_week:
+        color = "#FF3B30" if day in ["SUN", "SAT"] else "#1C1C1E"
+        grid_html += f"<div style='text-align: center; color: {color}; font-weight:800; font-size:16px; padding-bottom: 8px; border-bottom: 2px solid #E5E5EA;'>{day}</div>"
+
     current_day = 1
     total_days = len(df) 
-    today_flights = []
 
+    # 繪製日曆網格卡片
     for week in range(6):
         if current_day > total_days: break
-        cols = st.columns(7)
         for day_idx in range(7):
             if week == 0 and day_idx < start_day_index:
-                cols[day_idx].markdown("<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px; margin-bottom: 12px;'></div>", unsafe_allow_html=True)
+                grid_html += "<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
             elif current_day <= total_days:
                 day_data = df[df['Date'] == current_day].iloc[0]
                 raw_content = day_data['Content']
@@ -273,72 +326,31 @@ def main():
                     border_style = "2px solid #007AFF" 
                     box_shadow = "0 4px 12px rgba(0, 122, 255, 0.15)"
                     today_badge = "<span style='float: right; background-color: #007AFF; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight:800;'>TODAY</span>"
-                    today_flights = extract_flights_from_content(raw_content)
                 else:
                     bg_color = "#FFFAFA" if day_idx in [0, 6] else "#FFFFFF"
                     border_style = "1px solid #E5E5EA"
                     box_shadow = "0 2px 8px rgba(0, 0, 0, 0.04)"
                     today_badge = ""
                 
-                # 整合者優化：將日期數字加上 a 標籤，並套用繼承樣式以維持平假日顏色
                 date_color = "#FF3B30" if day_idx in [0, 6] else "#1C1C1E"
                 date_link_html = f"<a href='?date={current_day}' target='_self' style='text-decoration:none; color:{date_color}; cursor:pointer;'>{current_day}</a>"
 
-                card_html = f"""
-                <div style='height: 180px; padding: 12px; background-color: {bg_color}; border: {border_style}; border-radius: 12px; margin-bottom: 12px; box-shadow: {box_shadow}; overflow-y: auto; line-height: 1.6;'>
+                grid_html += f"""
+                <div style='height: 180px; padding: 12px; background-color: {bg_color}; border: {border_style}; border-radius: 12px; box-shadow: {box_shadow}; overflow-y: auto; line-height: 1.6;'>
                     <div style='font-size: 18px; font-weight: 800; border-bottom: 1px solid #E5E5EA; padding-bottom: 4px; margin-bottom: 8px;'>
                         {date_link_html} {today_badge}
                     </div>
                     <div>{parsed_html}</div>
                 </div>
                 """
-                cols[day_idx].markdown(card_html, unsafe_allow_html=True)
                 current_day += 1
             else:
-                cols[day_idx].markdown("<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px; margin-bottom: 12px;'></div>", unsafe_allow_html=True)
+                grid_html += "<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
 
-    st.markdown("---")
-    col_sel, col_info = st.columns([1, 2])
+    grid_html += "</div></div>" # 關閉 grid 與 外框
     
-    with col_sel:
-        st.subheader("🔍 航班快速查詢")
-        st.info("💡 **提示：**\n1. 點擊右方日曆的 **藍色航班號碼** 查單班。\n2. 點擊日曆左上角的 **日期數字** 可顯示當日所有航班！", icon="👆")
-        
-        if today_flights:
-            st.success(f"今日 ({current_day_number} 號) 快速捷徑：")
-            for flight in today_flights:
-                if st.button(f"查看今日 {flight} 資訊", use_container_width=True):
-                    st.session_state.selected_flight = flight
-                    st.session_state.selected_date = None
-
-    with col_info:
-        # --- 整合者優化：支援多航班的動態顯示邏輯 ---
-        if st.session_state.selected_flight:
-            # 使用者點擊了單一航班 (如 ✈️ BR9)
-            with st.container():
-                display_flight_info_panel(st.session_state.selected_flight)
-                
-        elif st.session_state.selected_date:
-            # 使用者點擊了日期數字 (如 24)，或系統一開始自動載入今天
-            date_val = st.session_state.selected_date
-            day_data = df[df['Date'] == date_val]
-            
-            if not day_data.empty:
-                raw_content = day_data.iloc[0]['Content']
-                flights_on_date = extract_flights_from_content(raw_content)
-                
-                if flights_on_date:
-                    st.markdown(f"#### 📅 {date_val} 號 執勤航班總覽")
-                    for idx, f in enumerate(flights_on_date):
-                        with st.container():
-                            display_flight_info_panel(f)
-                        # 如果不是最後一個航班，加一條明顯的分隔線
-                        if idx < len(flights_on_date) - 1:
-                            st.markdown("<hr style='border: 2px dashed #AF52DE; margin: 30px 0;'>", unsafe_allow_html=True)
-                else:
-                    st.info(f"📅 您選擇的日期 ({date_val} 號) 無排定航班，或為休假/待命。好好休息！☕")
-        else:
-            st.warning("👈 尚未選擇航班或日期。請點擊上方日曆。")
+    # 輸出最終 HTML 網格
+    st.markdown(grid_html, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
