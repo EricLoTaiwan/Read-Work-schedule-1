@@ -236,11 +236,6 @@ def main():
     
     st.markdown("---")
     
-    # ==========================================
-    # 整合者優化：1. 將資訊欄移至最上方
-    # ==========================================
-    
-    # 預先取得今日航班 (為了最上方的捷徑面板能正常運作)
     today_flights = []
     day_data = df[df['Date'] == current_day_number]
     if not day_data.empty:
@@ -285,9 +280,6 @@ def main():
             st.warning("👈 尚未選擇航班或日期。請點擊下方日曆。")
 
 
-    # ==========================================
-    # 整合者優化：2. 使用純 HTML CSS Grid 重建日曆 (解決手機垂直堆疊問題)
-    # ==========================================
     st.markdown("---")
     st.subheader("🗓️ 班表總覽")
     
@@ -295,26 +287,21 @@ def main():
     first_day_str = str(df.iloc[0]['Day']).upper()
     start_day_index = days_of_week.index(first_day_str) if first_day_str in days_of_week else 0
 
-    # 建立一個可橫向滾動的外框，內部為 7 欄 CSS Grid
-    grid_html = """
-    <div style='width: 100%; overflow-x: auto; padding-bottom: 15px;'>
-        <div style='display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); gap: 12px; min-width: 900px;'>
-    """
+    # 整合者修正：去除前導空白，防止觸發 Markdown 程式碼區塊
+    grid_html = "<div style='width: 100%; overflow-x: auto; padding-bottom: 15px;'>\n<div style='display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); gap: 12px; min-width: 900px;'>"
 
-    # 繪製星期標題
     for day in days_of_week:
         color = "#FF3B30" if day in ["SUN", "SAT"] else "#1C1C1E"
-        grid_html += f"<div style='text-align: center; color: {color}; font-weight:800; font-size:16px; padding-bottom: 8px; border-bottom: 2px solid #E5E5EA;'>{day}</div>"
+        grid_html += f"\n<div style='text-align: center; color: {color}; font-weight:800; font-size:16px; padding-bottom: 8px; border-bottom: 2px solid #E5E5EA;'>{day}</div>"
 
     current_day = 1
     total_days = len(df) 
 
-    # 繪製日曆網格卡片
     for week in range(6):
         if current_day > total_days: break
         for day_idx in range(7):
             if week == 0 and day_idx < start_day_index:
-                grid_html += "<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
+                grid_html += "\n<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
             elif current_day <= total_days:
                 day_data = df[df['Date'] == current_day].iloc[0]
                 raw_content = day_data['Content']
@@ -335,21 +322,14 @@ def main():
                 date_color = "#FF3B30" if day_idx in [0, 6] else "#1C1C1E"
                 date_link_html = f"<a href='?date={current_day}' target='_self' style='text-decoration:none; color:{date_color}; cursor:pointer;'>{current_day}</a>"
 
-                grid_html += f"""
-                <div style='height: 180px; padding: 12px; background-color: {bg_color}; border: {border_style}; border-radius: 12px; box-shadow: {box_shadow}; overflow-y: auto; line-height: 1.6;'>
-                    <div style='font-size: 18px; font-weight: 800; border-bottom: 1px solid #E5E5EA; padding-bottom: 4px; margin-bottom: 8px;'>
-                        {date_link_html} {today_badge}
-                    </div>
-                    <div>{parsed_html}</div>
-                </div>
-                """
+                # 整合者修正：緊湊寫法，避免空白縮排被解析為 Code Block
+                grid_html += f"\n<div style='height: 180px; padding: 12px; background-color: {bg_color}; border: {border_style}; border-radius: 12px; box-shadow: {box_shadow}; overflow-y: auto; line-height: 1.6;'><div style='font-size: 18px; font-weight: 800; border-bottom: 1px solid #E5E5EA; padding-bottom: 4px; margin-bottom: 8px;'>{date_link_html} {today_badge}</div><div>{parsed_html}</div></div>"
                 current_day += 1
             else:
-                grid_html += "<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
+                grid_html += "\n<div style='height: 180px; background-color: #F2F2F7; border-radius: 12px;'></div>"
 
-    grid_html += "</div></div>" # 關閉 grid 與 外框
+    grid_html += "\n</div>\n</div>" 
     
-    # 輸出最終 HTML 網格
     st.markdown(grid_html, unsafe_allow_html=True)
 
 if __name__ == "__main__":
