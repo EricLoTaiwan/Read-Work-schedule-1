@@ -5,3 +5,7 @@ pandas
 googlemaps
 altair
 lunarcalendar
+google-generativeai
+Pillow
+pytz
+google-genai
